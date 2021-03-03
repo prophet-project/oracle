@@ -10,6 +10,13 @@ services:
             - db-data:/var/lib/postgresql/data
         ports:
             - "5432:5432"
+    redis:
+        image: "redis:alpine"
+        ports:
+            - 6379:6379
+        volumes:
+            - ./config/redis.conf:/redis.conf
+        command: [ "redis-server", "/redis.conf" ]
 volumes:
     db-data:
         driver: local

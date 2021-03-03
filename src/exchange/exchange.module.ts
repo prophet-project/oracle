@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { DatabaseModule } from 'src/database/database.module';
-import { ExchangeHistoryService } from './exchange-history.service';
 import { ExchangeService } from './exchange.service';
 
+@Global()
 @Module({
   imports: [DatabaseModule],
-  providers: [ExchangeService, ExchangeHistoryService],
+  providers: [ExchangeService],
+  exports: [ExchangeService],
 })
 export class ExchangeModule {}
