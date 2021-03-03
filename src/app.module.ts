@@ -5,7 +5,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ExchangeModule } from './exchange/exchange.module';
 import { getEnv } from './utils/common.utils';
-import { ExchangeBinanceModule } from './exchange-binance/exchange-binance.module';
 
 @Module({
   imports: [
@@ -19,7 +18,6 @@ import { ExchangeBinanceModule } from './exchange-binance/exchange-binance.modul
       }),
     }),
     ExchangeModule,
-    ExchangeBinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

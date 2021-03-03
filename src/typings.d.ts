@@ -17,13 +17,31 @@ export type TimeFrame =
   | '1w'
   | '1M';
 
-export interface ExchangeJobPayload {
+export type ExchangeRequestType = 'OHLCV';
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface BaseExchangeRequestPayload {}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface BaseExchangeResponseData {}
+
+export interface ExchangeRequestJob {
+  type: ExchangeRequestType;
+  payload: BaseExchangeRequestPayload;
+}
+
+export interface ExchangeResponse {
+  type: ExchangeRequestType;
+  data: BaseExchangeResponseData;
+}
+
+export interface OHLCVRequestPayload extends BaseExchangeRequestPayload {
   symbol: string;
   timeFrame: TimeFrame;
   from?: number;
   limit?: number;
 }
 
-interface ExchangeJobResult {
-  data: ccxt.OHLCV[];
+interface OHLCVResponseData extends BaseExchangeResponseData {
+  items: ccxt.OHLCV[];
 }
