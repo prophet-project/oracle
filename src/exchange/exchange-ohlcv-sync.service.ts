@@ -2,7 +2,12 @@ import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Queue } from 'bull';
 import { Sequelize } from 'sequelize-typescript';
-import { ExchangeRequestJob, OHLCVRequestPayload } from 'src/typings';
+import {
+  ExchangeRequestJob,
+  ExchangeResponse,
+  OHLCVRequestPayload,
+  OHLCVResponseData,
+} from 'src/typings';
 import { BITCOIN_LAUNCH } from './constants';
 import { QUEUE_NAME } from './exchange.processor';
 import { ExchangeService } from './exchange.service';
@@ -38,24 +43,40 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
         `Starting "${timeframe}" OHLCV data sync from ${date}...`,
       );
       await this.syncOHLCVFromTimestamp(timeframe, timestamp);
+      this.logger.debug(`Syncing "${timeframe}" OHLCV data is done`);
     }
   }
 
   async syncOHLCVFromTimestamp(timeframe: string, timestamp: number) {
-    const { exchange } = this.exchangeService;
-    const limit = 1000;
+    this.logger.debug(
+      `Fetching "${timeframe}" OHLCV candles from ${formatDate(
+        timestamp,
+        timeframe,
+      )}`,
+    );
+    const { exchange, limit } = this.exchangeService;
     const timeframeDurationInSeconds = exchange.parseTimeframe(timeframe);
     const timeframeDurationInMilliseconds = timeframeDurationInSeconds * 1000;
-    const timeDelta = limit * timeframeDurationInMilliseconds;
+    const timeDelta = (limit - 1) * timeframeDurationInMilliseconds;
     const fetchSince = timestamp - timeDelta;
-    await this.getExchangeOHLCV({ timeframe, limit, from: fetchSince });
-  }
+    const candles = await this.getExchangeOHLCV({
+      timeframe,
+      limit,
+      from: fetchSince,
+    });
 
-  async getOlderOHLCVEntry(timeframe: string): Promise<ccxt.OHLCV | null> {
-    return (
-      (await this.getOlderOHLCVEntryFromDB(timeframe)) ??
-      (await this.getOlderOHLCVEntryFromExchange(timeframe))
-    );
+    if (candles === null) {
+      this.logger.debug(`Retrying to fetch "${timeframe}" OHLCV data...`);
+      await this.syncOHLCVFromTimestamp(timeframe, timestamp);
+      return;
+    }
+    this.logger.debug(`Fetched ${candles.length} "${timeframe}" OHLCV candles`);
+
+    const olderTimestamp = candles[0][0];
+    if (candles.length === 0 || timestamp === olderTimestamp) {
+      return;
+    }
+    await this.syncOHLCVFromTimestamp(timeframe, olderTimestamp);
   }
 
   async getOlderOHLCVEntryFromDB(
@@ -79,12 +100,12 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
       from: BITCOIN_LAUNCH,
       limit: 1,
     });
-    return data.length === 0 ? null : data[0];
+    return !data || data.length === 0 ? null : data[0];
   }
 
   async getExchangeOHLCV(
     payload: Partial<OHLCVRequestPayload>,
-  ): Promise<ccxt.OHLCV[]> {
+  ): Promise<OHLCVResponseData> {
     const job = await this.exchangeQueue.add({
       type: 'OHLCV',
       payload: {
@@ -92,7 +113,9 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
         ...payload,
       } as OHLCVRequestPayload,
     });
-    const { data } = await job.finished();
+    const {
+      data,
+    } = (await job.finished()) as ExchangeResponse<OHLCVResponseData>;
     return data;
   }
 }

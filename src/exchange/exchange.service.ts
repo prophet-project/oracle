@@ -9,7 +9,7 @@ export class ExchangeService implements OnModuleInit {
   private readonly logger = new Logger(ExchangeService.name);
   private readonly exchanges: ccxt.Exchange[];
   private readonly currentExchange: ccxt.Exchange;
-  private timeframes: string[];
+  private timeframes?: string[];
 
   constructor(private sequelize: Sequelize) {
     this.exchanges = [
@@ -28,20 +28,21 @@ export class ExchangeService implements OnModuleInit {
       (exchange) =>
         exchange.name.toLowerCase() ===
         getEnv('SELECTED_EXCHANGE').toLowerCase(),
-    );
+    ) as ccxt.Exchange;
     this.logger = new Logger(
       `${ExchangeService.name} (${this.currentExchange.name})`,
     );
   }
 
   async onModuleInit() {
+    this.log(
+      `Symbol: ${this.defaultSymbol}, OHLCV request limit: ${this.limit}`,
+    );
     this.log('Loading markets...');
     await this.currentExchange.loadMarkets();
 
     this.log('Fetching OHLCV timeframes...');
-    this.timeframes = await this.fetchOHLCVTimeframes();
-
-    console.log(this.exchange.parseTimeframe('1m'));
+    this.timeframes = _.compact(await this.fetchOHLCVTimeframes());
   }
 
   async fetchOHLCVTimeframes() {
@@ -60,11 +61,19 @@ export class ExchangeService implements OnModuleInit {
   }
 
   get defaultSymbol(): string {
-    return getEnv(this.exchange.name.toUpperCase() + '_SYMBOL', 'BTC/USDT');
+    return getEnv(this.name.toUpperCase() + '_SYMBOL', 'BTC/USDT');
+  }
+
+  get limit(): number {
+    return +getEnv(this.name.toUpperCase() + '_OHLCV_REQUEST_LIMIT', 100);
+  }
+
+  get name(): string {
+    return this.exchange.name;
   }
 
   get supportedTimeframes(): string[] {
-    return this.timeframes;
+    return this.timeframes ?? [];
   }
 
   log(message: any) {
