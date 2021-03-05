@@ -57,25 +57,27 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     const timeframeDurationInSeconds = exchange.parseTimeframe(timeframe);
     const timeframeDurationInMilliseconds = timeframeDurationInSeconds * 1000;
     const timeDelta = (limit - 1) * timeframeDurationInMilliseconds;
-    const fetchSince = timestamp - timeDelta;
-    const candles = await this.getExchangeOHLCV({
-      timeframe,
-      limit,
-      from: fetchSince,
-    });
-
+    const from = timestamp - timeDelta;
+    const candles = await this.getExchangeOHLCV({ timeframe, limit, from });
+    let nextSyncFrom: number;
+    let message: string;
     if (candles === null) {
-      this.logger.debug(`Retrying to fetch "${timeframe}" OHLCV data...`);
-      await this.syncOHLCVFromTimestamp(timeframe, timestamp);
-      return;
+      nextSyncFrom = timestamp;
+      message = `Retrying to fetch "${timeframe}" OHLCV data...`;
+    } else {
+      const oldestTimestamp = candles[0][0];
+      if (candles.length === 0 || timestamp === oldestTimestamp) {
+        nextSyncFrom = -1;
+        message = `No "${timeframe}" OHLCV data was fetched`;
+      } else {
+        nextSyncFrom = oldestTimestamp;
+        message = `Fetched ${candles.length} "${timeframe}" OHLCV candles`;
+      }
     }
-    this.logger.debug(`Fetched ${candles.length} "${timeframe}" OHLCV candles`);
-
-    const olderTimestamp = candles[0][0];
-    if (candles.length === 0 || timestamp === olderTimestamp) {
-      return;
+    this.logger.debug(message);
+    if (nextSyncFrom >= 0) {
+      await this.syncOHLCVFromTimestamp(timeframe, nextSyncFrom);
     }
-    await this.syncOHLCVFromTimestamp(timeframe, olderTimestamp);
   }
 
   private async getOlderOHLCVEntryFromDB(
