@@ -46,38 +46,71 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     }
   }
 
-  private async syncOHLCVFromTimestamp(timeframe: string, timestamp: number) {
+  private async syncOHLCVFromTimestamp(
+    timeframe: string,
+    syncFrom: number | ccxt.OHLCV,
+  ) {
+    const timestamp = typeof syncFrom === 'number' ? syncFrom : syncFrom[0];
     this.logger.debug(
       `Fetching "${timeframe}" OHLCV candles from ${formatDate(
         timestamp,
         timeframe,
       )}`,
     );
-    const { exchange, limit } = this.exchangeService;
-    const timeframeDurationInSeconds = exchange.parseTimeframe(timeframe);
-    const timeframeDurationInMilliseconds = timeframeDurationInSeconds * 1000;
-    const timeDelta = (limit - 1) * timeframeDurationInMilliseconds;
+    const { limit } = this.exchangeService;
+    const timeframeDuration = this.getTimeframeDuration(timeframe);
+    const timeDelta = (limit - 1) * timeframeDuration;
     const from = timestamp - timeDelta;
     const candles = await this.getExchangeOHLCV({ timeframe, limit, from });
-    let nextSyncFrom: number;
+    let nextSyncFrom: number | ccxt.OHLCV | null;
     let message: string;
     if (candles === null) {
-      nextSyncFrom = timestamp;
+      nextSyncFrom = syncFrom;
       message = `Retrying to fetch "${timeframe}" OHLCV data...`;
     } else {
-      const oldestTimestamp = candles[0][0];
-      if (candles.length === 0 || timestamp === oldestTimestamp) {
-        nextSyncFrom = -1;
+      const oldestCandle = candles[0];
+      if (candles.length === 0 || timestamp === oldestCandle[0]) {
+        nextSyncFrom = null;
         message = `No "${timeframe}" OHLCV data was fetched`;
       } else {
-        nextSyncFrom = oldestTimestamp;
+        nextSyncFrom = oldestCandle;
         message = `Fetched ${candles.length} "${timeframe}" OHLCV candles`;
       }
     }
     this.logger.debug(message);
-    if (nextSyncFrom >= 0) {
+
+    if (candles !== null) {
+      const fromCandle = typeof syncFrom === 'number' ? null : syncFrom;
+      await this.handleFetchedOHLCVEntries(candles, timeframe, fromCandle);
+    }
+
+    if (nextSyncFrom !== null) {
       await this.syncOHLCVFromTimestamp(timeframe, nextSyncFrom);
     }
+  }
+
+  private async handleFetchedOHLCVEntries(
+    candles: ccxt.OHLCV[],
+    timeframe: string,
+    fetchedFrom: ccxt.OHLCV | null,
+  ) {
+    if (fetchedFrom !== null) {
+      candles = this.removeDuplicatedCandle(candles, fetchedFrom, timeframe);
+    }
+  }
+
+  private removeDuplicatedCandle(
+    candles: ccxt.OHLCV[],
+    targetCandle: ccxt.OHLCV,
+    timeframe: string,
+  ): ccxt.OHLCV[] {
+    const duration = this.getTimeframeDuration(timeframe);
+    const [targetTimestamp, ...restTargetData] = targetCandle;
+    return _.reject(candles, (candle: ccxt.OHLCV) => {
+      const [timestamp, ...restData] = candle;
+      const withinRange = Math.abs(targetTimestamp - timestamp) < duration;
+      return withinRange && _.isEqual(restData, restTargetData);
+    });
   }
 
   private async getOlderOHLCVEntryFromDB(
@@ -108,4 +141,10 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     } = (await job.finished()) as ExchangeResponse<OHLCVResponseData>;
     return data;
   }
+
+  getTimeframeDuration = _.memoize((timeframe: string) => {
+    const { exchange } = this.exchangeService;
+    const durationInSeconds = exchange.parseTimeframe(timeframe);
+    return durationInSeconds * 1000;
+  });
 }
