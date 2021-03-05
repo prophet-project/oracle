@@ -1,5 +1,6 @@
 import * as _ from 'lodash';
-import { Sequelize, DataType } from 'sequelize-typescript';
+import { Sequelize } from 'sequelize-typescript';
+import OHLCVCandle from 'src/exchange/models/ohlcv-candle';
 
 const PREFIX = 'ohlcv';
 const TIME_FRAMES = ['1m', '1h', '1d'];
@@ -10,14 +11,7 @@ export default {
     const queryInterface = sequelize.getQueryInterface();
     for (const timeFrame of TIME_FRAMES) {
       const tableName = `${PREFIX}_${timeFrame}`;
-      await queryInterface.createTable(tableName, {
-        timestamp: { type: DataType.INTEGER, allowNull: false, unique: true },
-        open: { type: DataType.DOUBLE, allowNull: false },
-        high: { type: DataType.DOUBLE, allowNull: false },
-        low: { type: DataType.DOUBLE, allowNull: false },
-        close: { type: DataType.DOUBLE, allowNull: false },
-        volume: { type: DataType.DOUBLE, allowNull: false },
-      });
+      await queryInterface.createTable(tableName, OHLCVCandle);
       await sequelize.query(
         `SELECT create_hypertable('${tableName}', 'timestamp', chunk_time_interval => 86400000)`,
       );

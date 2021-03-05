@@ -13,6 +13,7 @@ import { ExchangeService } from './exchange.service';
 import * as ccxt from 'ccxt';
 import * as _ from 'lodash';
 import { formatDate } from 'src/utils/data.utils';
+import OHLCVCandle from './models/ohlcv-candle';
 
 @Injectable()
 export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
@@ -116,13 +117,12 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
   private async getOlderOHLCVEntryFromDB(
     timeframe: string,
   ): Promise<ccxt.OHLCV | null> {
-    const result = await this.sequelize.query(
-      `SELECT * FROM ohlcv_${timeframe} ORDER BY timestamp ASC LIMIT 1`,
-      {
-        raw: true,
-        plain: true,
-      },
-    );
+    const model = this.getModel(timeframe);
+    const result = await model.findOne({
+      raw: true,
+      plain: true,
+      order: [['timestamp', 'ASC']],
+    });
     return result ? (_.values(result) as ccxt.OHLCV) : null;
   }
 
@@ -146,5 +146,14 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     const { exchange } = this.exchangeService;
     const durationInSeconds = exchange.parseTimeframe(timeframe);
     return durationInSeconds * 1000;
+  });
+
+  getModel = _.memoize((timeframe: string) => {
+    const name = 'ohlcv_' + timeframe;
+    let model = this.sequelize.models[name];
+    if (model) return model;
+    model = this.sequelize.define(name, OHLCVCandle);
+    model.removeAttribute('id');
+    return model;
   });
 }

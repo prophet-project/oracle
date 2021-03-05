@@ -24,6 +24,12 @@ export class SequelizeConfigService implements SequelizeOptionsFactory {
       database: getEnv('POSTGRES_DB'),
       autoLoadModels: true,
       synchronize: true,
+      define: {
+        freezeTableName: true,
+        createdAt: false,
+        updatedAt: false,
+        timestamps: false,
+      },
     };
   }
 }
