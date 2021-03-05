@@ -20,7 +20,7 @@ export class ExchangeProcessor {
 
   @Process()
   async handleHTTPRequestJob(
-    job: Job<ExchangeRequestJob>,
+    job: Job<ExchangeRequestJob<unknown>>,
   ): Promise<ExchangeResponse> {
     const { type, payload } = job.data;
     let data: BaseExchangeResponseData;
@@ -36,7 +36,7 @@ export class ExchangeProcessor {
   handleOHLCVRequest(payload: OHLCVRequestPayload) {
     return this.exchange.fetchOHLCV(
       payload.symbol,
-      payload.timeFrame,
+      payload.timeframe,
       payload.from,
       payload.limit,
     );

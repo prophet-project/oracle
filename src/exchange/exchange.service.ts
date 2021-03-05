@@ -7,41 +7,64 @@ import { getEnv } from 'src/utils/common.utils';
 @Injectable()
 export class ExchangeService implements OnModuleInit {
   private readonly logger = new Logger(ExchangeService.name);
-  private readonly binance: ccxt.binance;
+  private readonly exchanges: ccxt.Exchange[];
+  private readonly currentExchange: ccxt.Exchange;
+  private timeframes: string[];
 
   constructor(private sequelize: Sequelize) {
-    this.binance = new ccxt.binance({
-      apiKey: getEnv('BINANCE_API_KEY'),
-      secret: getEnv('BINANCE_SECRET_KEY'),
-      enableRateLimit: true,
-    });
-    this.logger = new Logger(`${ExchangeService.name} (${this.binance.name})`);
+    this.exchanges = [
+      new ccxt.bitfinex2({
+        apiKey: getEnv('BINANCE_API_KEY'),
+        secret: getEnv('BINANCE_SECRET_KEY'),
+        enableRateLimit: true,
+      }),
+      new ccxt.binance({
+        apiKey: getEnv('BITFINEX_API_KEY'),
+        secret: getEnv('BITFINEX_SECRET_KEY'),
+        enableRateLimit: true,
+      }),
+    ];
+    this.currentExchange = this.exchanges.find(
+      (exchange) =>
+        exchange.name.toLowerCase() ===
+        getEnv('SELECTED_EXCHANGE').toLowerCase(),
+    );
+    this.logger = new Logger(
+      `${ExchangeService.name} (${this.currentExchange.name})`,
+    );
   }
 
   async onModuleInit() {
     this.log('Loading markets...');
-    await this.binance.loadMarkets();
+    await this.currentExchange.loadMarkets();
 
     this.log('Fetching OHLCV timeframes...');
-    await this.prepareOHLCVTables();
+    this.timeframes = await this.fetchOHLCVTimeframes();
+
+    console.log(this.exchange.parseTimeframe('1m'));
   }
 
-  async prepareOHLCVTables() {
+  async fetchOHLCVTimeframes() {
     const queryInterface = this.sequelize.getQueryInterface();
     const tables = await queryInterface.showAllTables();
-    const timeFrames = _.chain(tables)
+    const timeframes = _.chain(tables)
       .filter((tableName) => tableName.startsWith('ohlcv_'))
       .map((tableName) => tableName.split('_').pop())
       .value();
-    this.log(`Active OHLCV timeframes: ${timeFrames.join(', ')}`);
+    this.log(`Supported OHLCV timeframes: ${timeframes.join(', ')}`);
+    return timeframes;
   }
 
   get exchange(): ccxt.Exchange {
-    return this.binance;
+    return this.currentExchange;
   }
 
   get defaultSymbol(): string {
-    return 'BTC/USDT';
+    return getEnv(this.exchange.name.toUpperCase() + '_SYMBOL', 'BTC/USDT');
+  }
+
+  get supportedTimeframes(): string[] {
+    return this.timeframes;
   }
 
   log(message: any) {

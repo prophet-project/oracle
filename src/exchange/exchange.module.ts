@@ -1,7 +1,8 @@
 import { BullModule } from '@nestjs/bull';
 import { Global, Module } from '@nestjs/common';
 import { DatabaseModule } from 'src/database/database.module';
-import { QUEUE_NAME } from './exchange.processor';
+import { ExchangeOHLCVSyncService } from './exchange-ohlcv-sync.service';
+import { ExchangeProcessor, QUEUE_NAME } from './exchange.processor';
 import { ExchangeService } from './exchange.service';
 
 @Global()
@@ -25,7 +26,7 @@ import { ExchangeService } from './exchange.service';
       inject: [ExchangeService],
     }),
   ],
-  providers: [ExchangeService],
+  providers: [ExchangeService, ExchangeProcessor, ExchangeOHLCVSyncService],
   exports: [ExchangeService],
 })
 export class ExchangeModule {}
