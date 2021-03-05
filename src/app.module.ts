@@ -1,8 +1,6 @@
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { ExchangeModule } from './exchange/exchange.module';
 import { getEnv } from './utils/common.utils';
 
@@ -19,7 +17,5 @@ import { getEnv } from './utils/common.utils';
     }),
     ExchangeModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
