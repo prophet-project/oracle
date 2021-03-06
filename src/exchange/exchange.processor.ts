@@ -7,6 +7,7 @@ import {
   OHLCVRequestPayload,
   OHLCVResponseData,
 } from 'src/typings';
+import { sleep } from 'src/utils/common.utils';
 import { ExchangeService } from './exchange.service';
 
 export const QUEUE_NAME = 'exchange_queue';
@@ -42,12 +43,18 @@ export class ExchangeProcessor {
     return { type, data };
   }
 
-  handleOHLCVRequest(payload: OHLCVRequestPayload) {
-    return this.exchange.fetchOHLCV(
+  handleOHLCVRequest(
+    payload: OHLCVRequestPayload,
+  ): Promise<OHLCVResponseData | null> {
+    const requestPromise = this.exchange.fetchOHLCV(
       payload.symbol,
       payload.timeframe,
       payload.from,
       payload.limit,
     );
+    if (payload.timeout) {
+      return Promise.race([requestPromise, sleep<null>(payload.timeout, null)]);
+    }
+    return requestPromise;
   }
 }

@@ -1,8 +1,14 @@
 import { InjectQueue } from '@nestjs/bull';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import {
+  BeforeApplicationShutdown,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { Queue } from 'bull';
 import { Sequelize } from 'sequelize-typescript';
 import {
+  DataSyncType,
   ExchangeRequestJob,
   ExchangeResponse,
   OHLCVRequestPayload,
@@ -17,19 +23,81 @@ import OHLCVCandle, {
   createOHLCVCandle,
   parseOHLCVCandle,
 } from './models/ohlcv-candle';
+import { sleep } from 'src/utils/common.utils';
+import { SchedulerRegistry } from '@nestjs/schedule';
 
 @Injectable()
-export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
+export class ExchangeOHLCVSyncService
+  implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly logger = new Logger(ExchangeOHLCVSyncService.name);
 
   constructor(
     @InjectQueue(QUEUE_NAME)
     private exchangeQueue: Queue<ExchangeRequestJob<OHLCVRequestPayload>>,
+    private schedulerRegistry: SchedulerRegistry,
     private exchangeService: ExchangeService,
     private sequelize: Sequelize,
   ) {}
 
   async onApplicationBootstrap() {
+    await this.startSyncingOlderOHLCVData();
+
+    this.startSyncingRecentOHLCVData();
+  }
+
+  beforeApplicationShutdown() {
+    const intervals = this.schedulerRegistry.getIntervals();
+    for (const name of intervals) {
+      this.schedulerRegistry.deleteInterval(name);
+      this.logger.log(`Interval "${name}" was deleted`);
+    }
+  }
+
+  private async startSyncingRecentOHLCVData() {
+    const syncOrder = this.exchangeService.supportedTimeframes;
+    this.logger.log(
+      `Starting to sync recent OHLCV data [Order: ${syncOrder.join(', ')}]...`,
+    );
+    syncOrder.forEach((timeframe) => {
+      const duration = this.getTimeframeDuration(timeframe);
+      const milliseconds = Math.max(duration / 10, 10000);
+      const interval = setInterval(
+        () => this.startSyncingRecentOHLCVDataBy(timeframe, milliseconds),
+        milliseconds,
+      );
+      this.schedulerRegistry.addInterval(`${timeframe}_ohlcv_update`, interval);
+      this.logger.debug(
+        `Interval for "${timeframe}" update was created [milliseconds: ${milliseconds}]`,
+      );
+    });
+  }
+
+  private async startSyncingRecentOHLCVDataBy(
+    timeframe: string,
+    delay: number,
+  ) {
+    const newestOHLCV = await this.getNewestOHLCVEntryFromDB(timeframe);
+    if (!newestOHLCV) {
+      throw new Error(`There is no "${timeframe}" OHLCV data in database`);
+    }
+    const from = newestOHLCV[0];
+    const date = formatDate(from, timeframe);
+    this.logger.log(
+      `Starting to sync recent "${timeframe}" OHLCV data from ${date}...`,
+    );
+    const { limit } = this.exchangeService;
+    const candles = await this.getExchangeOHLCV({
+      timeframe,
+      limit,
+      from,
+      timeout: delay,
+    });
+    if (candles !== null && candles.length > 0) {
+      await this.handleFetchedOHLCVEntries(candles, timeframe, newestOHLCV);
+    }
+  }
+
+  private async startSyncingOlderOHLCVData() {
     const { exchange } = this.exchangeService;
     const syncOrder = _.sortBy(
       this.exchangeService.supportedTimeframes,
@@ -39,7 +107,7 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
       `Preparing to OHLCV data sync [Order: ${syncOrder.join(', ')}]...`,
     );
     for (const timeframe of syncOrder) {
-      const olderOHLCV = await this.getOlderOHLCVEntryFromDB(timeframe);
+      const olderOHLCV = await this.getOldestOHLCVEntryFromDB(timeframe);
       const timestamp = olderOHLCV ? olderOHLCV[0] : exchange.milliseconds();
       const date = formatDate(timestamp, timeframe);
       this.logger.log(
@@ -124,14 +192,27 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     });
   }
 
-  private async getOlderOHLCVEntryFromDB(
+  private getOldestOHLCVEntryFromDB(
     timeframe: string,
+  ): Promise<ccxt.OHLCV | null> {
+    return this.getEdgeOHLCVEntryFromDB(timeframe, 'OLDER');
+  }
+
+  private getNewestOHLCVEntryFromDB(
+    timeframe: string,
+  ): Promise<ccxt.OHLCV | null> {
+    return this.getEdgeOHLCVEntryFromDB(timeframe, 'NEWER');
+  }
+
+  private async getEdgeOHLCVEntryFromDB(
+    timeframe: string,
+    type: DataSyncType,
   ): Promise<ccxt.OHLCV | null> {
     const model = this.getModel(timeframe);
     const result = await model.findOne({
       raw: true,
       plain: true,
-      order: [['timestamp', 'ASC']],
+      order: [['timestamp', type === 'OLDER' ? 'ASC' : 'DESC']],
     });
     return result ? parseOHLCVCandle(result) : null;
   }

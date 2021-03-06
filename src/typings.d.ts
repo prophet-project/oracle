@@ -1,6 +1,7 @@
 import * as ccxt from 'ccxt';
 
 export type ExchangeRequestType = 'OHLCV';
+export type DataSyncType = 'NEWER' | 'OLDER';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface BaseExchangeRequestPayload {}
@@ -15,6 +16,7 @@ export interface OHLCVRequestPayload extends BaseExchangeRequestPayload {
   timeframe: string;
   from?: number;
   limit?: number;
+  timeout?: number;
 }
 
 export interface ExchangeResponse<T> {
