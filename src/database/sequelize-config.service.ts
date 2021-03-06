@@ -7,7 +7,8 @@ import { getEnv } from 'src/utils/common.utils';
 
 @Injectable()
 export class SequelizeConfigService implements SequelizeOptionsFactory {
-  private readonly logger = new Logger(SequelizeConfigService.name);
+  private readonly logger = new Logger('Database');
+  private readonly logLimit = 748;
 
   createSequelizeOptions(
     connectionName?: string,
@@ -29,6 +30,13 @@ export class SequelizeConfigService implements SequelizeOptionsFactory {
         createdAt: false,
         updatedAt: false,
         timestamps: false,
+      },
+      logging: (sql) => {
+        if (sql.length > this.logLimit) {
+          sql = sql.substring(0, this.logLimit);
+          sql += '...';
+        }
+        this.logger.debug(sql);
       },
     };
   }
