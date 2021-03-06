@@ -13,7 +13,10 @@ import { ExchangeService } from './exchange.service';
 import * as ccxt from 'ccxt';
 import * as _ from 'lodash';
 import { formatDate } from 'src/utils/data.utils';
-import OHLCVCandle from './models/ohlcv-candle';
+import OHLCVCandle, {
+  createOHLCVCandle,
+  parseOHLCVCandle,
+} from './models/ohlcv-candle';
 
 @Injectable()
 export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
@@ -98,6 +101,13 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
     if (fetchedFrom !== null) {
       candles = this.removeDuplicatedCandle(candles, fetchedFrom, timeframe);
     }
+    const array = candles.map(createOHLCVCandle);
+    this.logger.debug(`Saving ${array.length} "${timeframe}" OHLCV...`);
+    const model = this.getModel(timeframe);
+    const result = await model.bulkCreate(array, {
+      updateOnDuplicate: ['timestamp'],
+    });
+    this.logger.debug(`Saved ${result.length} "${timeframe}" OHLCV candles`);
   }
 
   private removeDuplicatedCandle(
@@ -123,7 +133,7 @@ export class ExchangeOHLCVSyncService implements OnApplicationBootstrap {
       plain: true,
       order: [['timestamp', 'ASC']],
     });
-    return result ? (_.values(result) as ccxt.OHLCV) : null;
+    return result ? parseOHLCVCandle(result) : null;
   }
 
   private async getExchangeOHLCV(
