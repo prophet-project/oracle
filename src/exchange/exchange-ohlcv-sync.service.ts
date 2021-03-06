@@ -23,7 +23,6 @@ import OHLCVCandle, {
   createOHLCVCandle,
   parseOHLCVCandle,
 } from './models/ohlcv-candle';
-import { sleep } from 'src/utils/common.utils';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 @Injectable()
