@@ -39,7 +39,8 @@ export class ExchangeOHLCVSyncService
   ) {}
 
   async onApplicationBootstrap() {
-    await this.startSyncingOlderOHLCVData();
+    await this.syncOHLCVData('OLDER');
+    await this.syncOHLCVData('NEWER');
 
     this.startSyncingRecentOHLCVData();
   }
@@ -61,7 +62,7 @@ export class ExchangeOHLCVSyncService
       const duration = this.getTimeframeDuration(timeframe);
       const milliseconds = Math.max(duration / 10, 10000);
       const interval = setInterval(
-        () => this.startSyncingRecentOHLCVDataBy(timeframe, milliseconds),
+        () => this.syncRecentOHLCVDataBy(timeframe, milliseconds),
         milliseconds,
       );
       this.schedulerRegistry.addInterval(`${timeframe}_ohlcv_update`, interval);
@@ -71,10 +72,7 @@ export class ExchangeOHLCVSyncService
     });
   }
 
-  private async startSyncingRecentOHLCVDataBy(
-    timeframe: string,
-    delay: number,
-  ) {
+  private async syncRecentOHLCVDataBy(timeframe: string, timeout?: number) {
     const newestOHLCV = await this.getNewestOHLCVEntryFromDB(timeframe);
     if (!newestOHLCV) {
       throw new Error(`There is no "${timeframe}" OHLCV data in database`);
@@ -89,30 +87,34 @@ export class ExchangeOHLCVSyncService
       timeframe,
       limit,
       from,
-      timeout: delay,
+      timeout,
     });
     if (candles !== null && candles.length > 0) {
       await this.handleFetchedOHLCVEntries(candles, timeframe, newestOHLCV);
     }
   }
 
-  private async startSyncingOlderOHLCVData() {
+  private async syncOHLCVData(syncType: DataSyncType) {
     const { exchange } = this.exchangeService;
     const syncOrder = _.sortBy(
       this.exchangeService.supportedTimeframes,
       (timeframe) => -exchange.parseTimeframe(timeframe),
     );
+    const stringifyOrder = syncOrder.join(', ');
     this.logger.log(
-      `Preparing to OHLCV data sync [Order: ${syncOrder.join(', ')}]...`,
+      `Preparing to OHLCV data sync [Type: ${syncType}], [Order: ${stringifyOrder}]...`,
     );
     for (const timeframe of syncOrder) {
-      const olderOHLCV = await this.getOldestOHLCVEntryFromDB(timeframe);
-      const timestamp = olderOHLCV ? olderOHLCV[0] : exchange.milliseconds();
+      const edgeOHLCV = await this.getEdgeOHLCVEntryFromDB(timeframe, syncType);
+      if (syncType === 'NEWER' && !edgeOHLCV) {
+        throw new Error(`There is no "${timeframe}" OHLCV data in database`);
+      }
+      const timestamp = edgeOHLCV ? edgeOHLCV[0] : exchange.milliseconds();
       const date = formatDate(timestamp, timeframe);
       this.logger.log(
-        `Starting "${timeframe}" OHLCV data sync from ${date}...`,
+        `Starting to sync ${syncType.toLowerCase()} "${timeframe}" OHLCV data from ${date}...`,
       );
-      await this.syncOHLCVFromTimestamp(timeframe, timestamp);
+      await this.syncOHLCVFromTimestamp(timeframe, timestamp, syncType);
       this.logger.debug(`Syncing "${timeframe}" OHLCV data is done`);
     }
   }
@@ -120,31 +122,47 @@ export class ExchangeOHLCVSyncService
   private async syncOHLCVFromTimestamp(
     timeframe: string,
     syncFrom: number | ccxt.OHLCV,
+    syncType: DataSyncType,
   ) {
+    const { limit } = this.exchangeService;
     const timestamp = typeof syncFrom === 'number' ? syncFrom : syncFrom[0];
     this.logger.debug(
-      `Fetching "${timeframe}" OHLCV candles from ${formatDate(
+      `Fetching ${syncType.toLowerCase()} "${timeframe}" OHLCV candles from ${formatDate(
         timestamp,
         timeframe,
       )}`,
     );
-    const { limit } = this.exchangeService;
-    const timeframeDuration = this.getTimeframeDuration(timeframe);
-    const timeDelta = (limit - 1) * timeframeDuration;
-    const from = timestamp - timeDelta;
+
+    let from: number;
+    switch (syncType) {
+      case 'OLDER': {
+        const timeframeDuration = this.getTimeframeDuration(timeframe);
+        const timeDelta = (limit - 1) * timeframeDuration;
+        from = timestamp - timeDelta;
+        break;
+      }
+      case 'NEWER':
+        from = timestamp;
+        break;
+    }
+
     const candles = await this.getExchangeOHLCV({ timeframe, limit, from });
     let nextSyncFrom: number | ccxt.OHLCV | null;
     let message: string;
     if (candles === null) {
       nextSyncFrom = syncFrom;
-      message = `Retrying to fetch "${timeframe}" OHLCV data...`;
+      message = `Retrying to fetch ${syncType.toLowerCase()} "${timeframe}" OHLCV data...`;
     } else {
-      const oldestCandle = candles[0];
-      if (candles.length === 0 || timestamp === oldestCandle[0]) {
+      const edgeCandle = candles[syncType === 'OLDER' ? 0 : candles.length - 1];
+      const isEqual =
+        typeof syncFrom === 'number'
+          ? timestamp === edgeCandle[0]
+          : _.isEqual(edgeCandle, syncFrom);
+      if (candles.length === 0 || isEqual) {
         nextSyncFrom = null;
         message = `No "${timeframe}" OHLCV data was fetched`;
       } else {
-        nextSyncFrom = oldestCandle;
+        nextSyncFrom = edgeCandle;
         message = `Fetched ${candles.length} "${timeframe}" OHLCV candles`;
       }
     }
@@ -156,7 +174,7 @@ export class ExchangeOHLCVSyncService
     }
 
     if (nextSyncFrom !== null) {
-      await this.syncOHLCVFromTimestamp(timeframe, nextSyncFrom);
+      await this.syncOHLCVFromTimestamp(timeframe, nextSyncFrom, syncType);
     }
   }
 
@@ -168,6 +186,8 @@ export class ExchangeOHLCVSyncService
     if (fetchedFrom !== null) {
       candles = this.removeDuplicatedCandle(candles, fetchedFrom, timeframe);
     }
+    if (candles.length === 0) return;
+
     const array = candles.map(createOHLCVCandle);
     this.logger.debug(`Saving ${array.length} "${timeframe}" OHLCV...`);
     const model = this.getModel(timeframe);
@@ -189,12 +209,6 @@ export class ExchangeOHLCVSyncService
       const withinRange = Math.abs(targetTimestamp - timestamp) < duration;
       return withinRange && _.isEqual(restData, restTargetData);
     });
-  }
-
-  private getOldestOHLCVEntryFromDB(
-    timeframe: string,
-  ): Promise<ccxt.OHLCV | null> {
-    return this.getEdgeOHLCVEntryFromDB(timeframe, 'OLDER');
   }
 
   private getNewestOHLCVEntryFromDB(
