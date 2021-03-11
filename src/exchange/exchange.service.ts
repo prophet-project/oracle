@@ -3,6 +3,7 @@ import * as ccxt from 'ccxt';
 import * as _ from 'lodash';
 import { Sequelize } from 'sequelize-typescript';
 import { getEnv } from 'src/utils/common.utils';
+import OHLCVCandle from './models/ohlcv-candle';
 
 @Injectable()
 export class ExchangeService implements OnModuleInit {
@@ -79,4 +80,13 @@ export class ExchangeService implements OnModuleInit {
   log(message: any) {
     this.logger.log(message);
   }
+
+  getModel = _.memoize((timeframe: string) => {
+    const name = 'ohlcv_' + timeframe;
+    let model = this.sequelize.models[name];
+    if (model) return model;
+    model = this.sequelize.define(name, OHLCVCandle);
+    model.removeAttribute('id');
+    return model;
+  });
 }

@@ -4,6 +4,7 @@ import { DatabaseModule } from 'src/database/database.module';
 import { ExchangeOHLCVSyncService } from './exchange-ohlcv-sync.service';
 import { ExchangeProcessor, QUEUE_NAME } from './exchange.processor';
 import { ExchangeService } from './exchange.service';
+import { ExchangeController } from './exchange.controller';
 
 @Global()
 @Module({
@@ -28,5 +29,6 @@ import { ExchangeService } from './exchange.service';
   ],
   providers: [ExchangeService, ExchangeProcessor, ExchangeOHLCVSyncService],
   exports: [ExchangeService],
+  controllers: [ExchangeController],
 })
 export class ExchangeModule {}

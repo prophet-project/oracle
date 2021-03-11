@@ -19,10 +19,7 @@ import { ExchangeService } from './exchange.service';
 import * as ccxt from 'ccxt';
 import * as _ from 'lodash';
 import { formatDate } from 'src/utils/data.utils';
-import OHLCVCandle, {
-  createOHLCVCandle,
-  parseOHLCVCandle,
-} from './models/ohlcv-candle';
+import { createOHLCVCandle, parseOHLCVCandle } from './models/ohlcv-candle';
 import { SchedulerRegistry } from '@nestjs/schedule';
 
 @Injectable()
@@ -190,7 +187,7 @@ export class ExchangeOHLCVSyncService
 
     const array = candles.map(createOHLCVCandle);
     this.logger.debug(`Saving ${array.length} "${timeframe}" OHLCV...`);
-    const model = this.getModel(timeframe);
+    const model = this.exchangeService.getModel(timeframe);
     const result = await model.bulkCreate(array, {
       updateOnDuplicate: ['timestamp'],
     });
@@ -221,7 +218,7 @@ export class ExchangeOHLCVSyncService
     timeframe: string,
     type: DataSyncType,
   ): Promise<ccxt.OHLCV | null> {
-    const model = this.getModel(timeframe);
+    const model = this.exchangeService.getModel(timeframe);
     const result = await model.findOne({
       raw: true,
       plain: true,
@@ -250,14 +247,5 @@ export class ExchangeOHLCVSyncService
     const { exchange } = this.exchangeService;
     const durationInSeconds = exchange.parseTimeframe(timeframe);
     return durationInSeconds * 1000;
-  });
-
-  getModel = _.memoize((timeframe: string) => {
-    const name = 'ohlcv_' + timeframe;
-    let model = this.sequelize.models[name];
-    if (model) return model;
-    model = this.sequelize.define(name, OHLCVCandle);
-    model.removeAttribute('id');
-    return model;
   });
 }
