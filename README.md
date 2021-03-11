@@ -59,4 +59,7 @@
   $ npm run start:dev
   ```
 
-- Wait until all migrations are done and all history of OHLCV data are fetched from exchange and saved to DB.
+- Wait until all migrations are done and all history of OHLCV data are fetched from exchange and saved to DB, then you can get this data via API:
+  ```bash
+  $ curl http://localhost:3000/exchange/ohlcv?tf=1d
+  ```
