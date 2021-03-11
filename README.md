@@ -1,11 +1,11 @@
 ## Installation
 
-- Install node packages
+- Install node packages:
   
   ```bash
   $ npm install
   ```
-- Configure TimescaleDB in `docker/docker-compose.yml`
+- Configure TimescaleDB in `docker/docker-compose.yml`:
 
   ```
   POSTGRES_USER: "root"
@@ -13,8 +13,8 @@
   POSTGRES_DB: "test"
   ```
 
-- Create `.env` file with app configuration
-  - Define PostgreSQL-related variables
+- Create `.env` file with app configuration:
+  - Define PostgreSQL-related variables:
   
     ```
     POSTGRES_PASSWORD=root
@@ -24,7 +24,7 @@
     POSTGRES_PORT=5432
     ```
 
-  - Define Redis-related variables
+  - Define Redis-related variables:
 
     ```
     REDIS_HOST=localhost
