@@ -3,7 +3,7 @@ import { Sequelize } from 'sequelize-typescript';
 import OHLCVCandle from 'src/exchange/models/ohlcv-candle';
 
 const PREFIX = 'ohlcv';
-const TIME_FRAMES = ['1m', '1h', '1d'];
+export const TIME_FRAMES = ['1m', '1h', '1d'];
 
 export default {
   name: '01-create-ohlcv-tables',
