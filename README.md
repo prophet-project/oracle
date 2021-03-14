@@ -63,3 +63,8 @@
   ```bash
   $ curl http://localhost:3000/exchange/ohlcv?tf=1d
   ```
+  ...or export it to `.csv` file:
+  ```bash
+  $ psql -h localhost -p 5432 -U root -d test
+  $ \copy (SELECT * FROM ohlcv_1h ORDER BY timestamp ASC) to '~/1h_data.csv' with csv HEADER
+  ```
